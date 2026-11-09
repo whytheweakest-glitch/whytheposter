@@ -1,0 +1,41 @@
+{
+  "name": "whytheweakest-os",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WHYTHEWEAKEST OS: personal editorial system for a Telegram channel",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "prisma generate && next build",
+    "start": "next start -p 3000",
+    "bot": "tsx scripts/bot.ts",
+    "worker": "tsx scripts/worker.ts",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "backup": "tsx scripts/backup.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "import:reference": "tsx scripts/import-reference.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "grammy": "^1.46.0",
+    "next": "^15.5.29",
+    "pino": "^9.6.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "prisma": "^6.19.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.7"
+  }
+}

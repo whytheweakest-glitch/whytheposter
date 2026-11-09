@@ -1,0 +1,353 @@
+// WHYTHEWEAKEST OS. SQLite для MVP, схема переносима на PostgreSQL:
+// статусы хранятся строками (проверка в src/core/*/states.ts), JSON хранится текстом.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  telegramUserId BigInt   @unique @map("telegram_user_id")
+  displayName    String   @map("display_name")
+  role           String   @default("admin") // owner | admin
+  canApprove     Boolean  @default(false) @map("can_approve")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  sessions    Session[]
+  loginTokens LoginToken[]
+  approvals   Approval[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model LoginToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("login_tokens")
+}
+
+model Channel {
+  id               String   @id @default(cuid())
+  telegramChatId   BigInt   @unique @map("telegram_chat_id")
+  title            String
+  kind             String // main | test
+  isPublishEnabled Boolean  @default(false) @map("is_publish_enabled")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  posts            Post[]
+
+  @@map("channels")
+}
+
+model Category {
+  id               String     @id @default(cuid())
+  slug             String     @unique
+  name             String
+  descriptionForAi String     @default("") @map("description_for_ai")
+  color            String     @default("#888888")
+  sortOrder        Int        @default(0) @map("sort_order")
+  isActive         Boolean    @default(true) @map("is_active")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  materials        Material[]
+  posts            Post[]
+  ideas            Idea[]
+
+  @@map("categories")
+}
+
+model Source {
+  id        String     @id @default(cuid())
+  kind      String     @unique // telegram_bot | manual | upload | rss | web | obsidian
+  name      String
+  isEnabled Boolean    @default(true) @map("is_enabled")
+  createdAt DateTime   @default(now()) @map("created_at")
+  materials Material[]
+
+  @@map("sources")
+}
+
+model TelegramUpdate {
+  id          String     @id @default(cuid())
+  updateId    BigInt     @unique @map("update_id")
+  fromUserId  BigInt?    @map("from_user_id")
+  kind        String
+  payload     String // JSON без файлов
+  processedAt DateTime?  @map("processed_at")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  materials   Material[]
+
+  @@map("telegram_updates")
+}
+
+model Material {
+  id                 String          @id @default(cuid())
+  sourceId           String          @map("source_id")
+  telegramUpdateId   String?         @map("telegram_update_id")
+  type               String // link | text | image | video | document | voice | forward
+  status             String          @default("inbox") // inbox | processing | ready | failed | archived | deleted
+  originalUrl        String?         @map("original_url")
+  normalizedUrlHash  String?         @unique @map("normalized_url_hash")
+  contentHash        String?         @map("content_hash")
+  title              String?
+  sourceAuthor       String?         @map("source_author")
+  sourceName         String?         @map("source_name")
+  sourcePublishedAt  DateTime?       @map("source_published_at")
+  ownerNote          String?         @map("owner_note")
+  text               String? // текст, присланный автором
+  extractedText      String?         @map("extracted_text")
+  summary            String?
+  categoryId         String?         @map("category_id")
+  categoryConfidence Float?          @map("category_confidence")
+  categorySetBy      String?         @map("category_set_by") // ai | user
+  topic              String?
+  processingError    String?         @map("processing_error")
+  duplicateCount     Int             @default(0) @map("duplicate_count")
+  deletedAt          DateTime?       @map("deleted_at")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  source         Source          @relation(fields: [sourceId], references: [id])
+  telegramUpdate TelegramUpdate? @relation(fields: [telegramUpdateId], references: [id])
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  attachments    Attachment[]
+  postMaterials  PostMaterial[]
+  ideas          Idea[]
+
+  @@index([status, createdAt])
+  @@index([categoryId, createdAt])
+  @@index([contentHash])
+  @@map("materials")
+}
+
+model Attachment {
+  id                    String    @id @default(cuid())
+  materialId            String?   @map("material_id")
+  postId                String?   @map("post_id")
+  kind                  String // image | video | audio | voice | document
+  storageKey            String?   @map("storage_key") // null, пока файл не скачан
+  sha256                String?
+  mime                  String?
+  sizeBytes             Int?      @map("size_bytes")
+  fileName              String?   @map("file_name")
+  telegramFileId        String?   @map("telegram_file_id")
+  telegramFileUniqueId  String?   @map("telegram_file_unique_id")
+  downloadError         String?   @map("download_error")
+  sortOrder             Int       @default(0) @map("sort_order")
+  deletedAt             DateTime? @map("deleted_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  material              Material? @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  post                  Post?     @relation(fields: [postId], references: [id], onDelete: Restrict)
+
+  @@index([sha256])
+  @@index([telegramFileUniqueId])
+  @@map("attachments")
+}
+
+model Idea {
+  id               String    @id @default(cuid())
+  text             String
+  status           String    @default("open") // open | in_progress | used | dropped
+  categoryId       String?   @map("category_id")
+  originMaterialId String?   @map("origin_material_id")
+  deletedAt        DateTime? @map("deleted_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  category         Category? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  originMaterial   Material? @relation(fields: [originMaterialId], references: [id], onDelete: SetNull)
+
+  @@map("ideas")
+}
+
+model Post {
+  id                 String    @id @default(cuid())
+  status             String    @default("draft") // см. src/core/posts/states.ts
+  channelId          String?   @map("channel_id")
+  categoryId         String?   @map("category_id")
+  format             String    @default("text") // text | photo
+  body               String    @default("") // Telegram HTML (белый список тегов)
+  contentHash        String    @default("") @map("content_hash")
+  scheduledAt        DateTime? @map("scheduled_at")
+  publishAttemptId   String?   @unique @map("publish_attempt_id")
+  publishLeaseUntil  DateTime? @map("publish_lease_until")
+  telegramMessageIds String?   @map("telegram_message_ids") // JSON-массив
+  publishedAt        DateTime? @map("published_at")
+  publishedUrl       String?   @map("published_url")
+  lastError          String?   @map("last_error")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  channel         Channel?         @relation(fields: [channelId], references: [id])
+  category        Category?        @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  drafts          Draft[]
+  approvals       Approval[]
+  publishAttempts PublishAttempt[]
+  postMaterials   PostMaterial[]
+  attachments     Attachment[]
+
+  @@index([status, scheduledAt])
+  @@index([publishedAt])
+  @@map("posts")
+}
+
+model PostMaterial {
+  postId     String   @map("post_id")
+  materialId String   @map("material_id")
+  post       Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@id([postId, materialId])
+  @@map("post_materials")
+}
+
+model Draft {
+  id             String        @id @default(cuid())
+  postId         String        @map("post_id")
+  version        Int
+  body           String
+  origin         String // user | ai | autosave
+  aiGenerationId String?       @map("ai_generation_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  post           Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  aiGeneration   AiGeneration? @relation(fields: [aiGenerationId], references: [id])
+
+  @@unique([postId, version])
+  @@map("drafts")
+}
+
+/// Только добавление. Действующее подтверждение = последнее approve без последующих reject/revoke с совпадающим content_hash.
+model Approval {
+  id           String    @id @default(cuid())
+  postId       String    @map("post_id")
+  action       String // approve | reject | revoke | resolve_published | resolve_resend
+  userId       String    @map("user_id")
+  via          String // dashboard | bot
+  contentHash  String    @map("content_hash")
+  scheduledFor DateTime? @map("scheduled_for")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  post         Post      @relation(fields: [postId], references: [id], onDelete: Restrict)
+  user         User      @relation(fields: [userId], references: [id])
+
+  @@index([postId, createdAt])
+  @@map("approvals")
+}
+
+model PublishAttempt {
+  id                String    @id @default(cuid())
+  postId            String    @map("post_id")
+  approvalId        String    @map("approval_id")
+  startedAt         DateTime  @default(now()) @map("started_at")
+  finishedAt        DateTime? @map("finished_at")
+  outcome           String? // sent | rejected_by_telegram | unknown | rate_limited
+  telegramErrorCode Int?      @map("telegram_error_code")
+  errorText         String?   @map("error_text")
+  messageIds        String?   @map("message_ids")
+  post              Post      @relation(fields: [postId], references: [id], onDelete: Restrict)
+
+  @@index([postId])
+  @@map("publish_attempts")
+}
+
+model AiGeneration {
+  id            String   @id @default(cuid())
+  mode          String // curator | editor
+  provider      String
+  model         String
+  promptVersion String   @map("prompt_version")
+  subjectType   String   @map("subject_type")
+  subjectId     String   @map("subject_id")
+  output        String? // JSON
+  status        String // ok | invalid_output | error
+  error         String?
+  durationMs    Int?     @map("duration_ms")
+  createdAt     DateTime @default(now()) @map("created_at")
+  drafts        Draft[]
+
+  @@index([subjectType, subjectId])
+  @@map("ai_generations")
+}
+
+model Job {
+  id              String    @id @default(cuid())
+  kind            String
+  status          String    @default("queued") // queued | running | done | failed | cancelled
+  /// Заполнено, пока задача queued/running: не даёт поставить такую же задачу дважды.
+  activeDedupKey  String?   @unique @map("active_dedup_key")
+  dedupKey        String?   @map("dedup_key")
+  payload         String    @default("{}")
+  attempt         Int       @default(0)
+  maxAttempts     Int       @default(5) @map("max_attempts")
+  runAfter        DateTime  @default(now()) @map("run_after")
+  leaseUntil      DateTime? @map("lease_until")
+  lockedBy        String?   @map("locked_by")
+  lastError       String?   @map("last_error")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, runAfter])
+  @@map("jobs")
+}
+
+/// Только добавление.
+model ActivityLog {
+  id          String   @id @default(cuid())
+  actorType   String   @map("actor_type") // user | system | ai | bot
+  actorUserId String?  @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String?  @map("entity_id")
+  data        String? // JSON без секретов
+  severity    String   @default("info")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([entityType, entityId, createdAt])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+
+model Setting {
+  key       String   @id
+  value     String // JSON
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+/// Посты канала-образца (импорт из экспорта Telegram Desktop). Используются как примеры стиля.
+model ReferencePost {
+  id         String   @id @default(cuid())
+  channel    String
+  messageId  Int      @map("message_id")
+  date       DateTime
+  text       String
+  categoryId String?  @map("category_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([channel, messageId])
+  @@map("reference_posts")
+}
