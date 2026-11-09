@@ -16,8 +16,8 @@ import { syncChannelsFromEnv } from "../src/core/telegram/channels";
 import { runBackup } from "../src/core/backup";
 
 const e = env();
-const api = e.TELEGRAM_BOT_TOKEN ? new BotApi(e.TELEGRAM_BOT_TOKEN) : null;
-const handlers = buildHandlers(e.TELEGRAM_BOT_TOKEN);
+const api = e.TELEGRAM_BOT_TOKEN ? new BotApi(e.TELEGRAM_BOT_TOKEN, e.TELEGRAM_API_URL) : null;
+const handlers = buildHandlers(e.TELEGRAM_BOT_TOKEN, e.TELEGRAM_API_URL);
 let pausedUntil = 0;
 
 async function publishDue() {

@@ -12,9 +12,9 @@ import { escapeHtml } from "@/core/publishing/telegram-html";
 /** Бот может скачать через облачный Bot API файлы до 20 МБ. */
 export const TELEGRAM_DOWNLOAD_LIMIT = 20 * 1024 * 1024;
 
-export function buildHandlers(token: string | undefined): Partial<Record<JobKind, JobHandler>> {
-  const botApi = token ? new BotApi(token) : null;
-  const gApi = token ? new Api(token) : null;
+export function buildHandlers(token: string | undefined, apiRoot = "https://api.telegram.org"): Partial<Record<JobKind, JobHandler>> {
+  const botApi = token ? new BotApi(token, apiRoot) : null;
+  const gApi = token ? new Api(token, { apiRoot }) : null;
 
   return {
     async download_attachment(p) {

@@ -26,6 +26,8 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1),
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET должен быть не короче 32 символов"),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  /** Только для тестов с поддельным сервером Bot API. */
+  TELEGRAM_API_URL: z.string().url().default("https://api.telegram.org"),
   OWNER_TELEGRAM_IDS: ids,
   TEST_CHANNEL_ID: z.string().optional(),
   MAIN_CHANNEL_ID: z.string().optional(),
