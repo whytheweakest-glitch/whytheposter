@@ -6,6 +6,7 @@ import { Shell, fmtDate, StatusBadge, toLocalInput } from "@/components/shell";
 import { Editor } from "@/components/editor";
 import { POST_STATUS_LABEL, EDITABLE, type PostStatus } from "@/core/posts/states";
 import { checkPost } from "@/core/publishing/telegram-html";
+import { FORMAT_LABEL, type PostFormat } from "@/core/publishing/format";
 import { getValidApproval } from "@/core/posts/service";
 import { postAction, savePostMeta, useVariant, requestAiVariants } from "../../actions";
 
@@ -36,10 +37,11 @@ export default async function PostPage({ params, searchParams }: { params: Promi
   const status = post.status as PostStatus;
   const editable = EDITABLE.includes(status);
   const sourceUrls = post.postMaterials.map((pm) => pm.material.originalUrl).filter((u): u is string => !!u);
-  const checks = checkPost(post.body, post.format as "text" | "photo", { sourceUrls });
+  const checks = checkPost(post.body, post.format, { sourceUrls });
   const hasErrors = checks.some((c) => c.level === "error");
-  const images = post.postMaterials.flatMap((pm) => pm.material.attachments.filter((a) => a.kind === "image" && a.storageKey));
-  const currentImage = post.attachments.find((a) => a.kind === "image" && a.storageKey);
+  const available = post.postMaterials.flatMap((pm) => pm.material.attachments.filter((a) => !a.deletedAt));
+  const selectedSha = new Set(post.attachments.map((a) => a.sha256));
+  const media = post.attachments.filter((a) => a.storageKey).map((a) => ({ kind: a.kind, url: `/api/files/${a.storageKey}`, name: a.fileName ?? a.kind }));
   const hidden = <input type="hidden" name="id" value={post.id} />;
 
   return (
@@ -59,7 +61,7 @@ export default async function PostPage({ params, searchParams }: { params: Promi
         </div>
       )}
 
-      <Editor postId={post.id} initialBody={post.body} editable={editable} format={post.format as "text" | "photo"} channelTitle={post.channel?.title ?? "Канал не выбран"} imageUrl={currentImage ? `/api/files/${currentImage.storageKey}` : null} />
+      <Editor postId={post.id} initialBody={post.body} editable={editable} format={post.format} channelTitle={post.channel?.title ?? "Канал не выбран"} media={media} />
 
       <form id="meta" action={savePostMeta} className="row" style={{ marginTop: 12 }}>
         {hidden}
@@ -67,22 +69,28 @@ export default async function PostPage({ params, searchParams }: { params: Promi
           <option value="">Без категории</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <select name="format" defaultValue={post.format} disabled={!editable} aria-label="Формат">
-          <option value="text">Текст</option>
-          <option value="photo">Фото с подписью</option>
-        </select>
-        {images.length > 0 && (
-          <select name="photoAttachmentId" defaultValue="" disabled={!editable} aria-label="Изображение">
-            <option value="">{currentImage ? "Фото выбрано" : "Выбрать фото…"}</option>
-            {images.map((a) => <option key={a.id} value={a.id}>{a.fileName ?? a.id}</option>)}
-          </select>
-        )}
         <select name="channelId" defaultValue={post.channelId ?? ""} disabled={!editable} aria-label="Канал">
           <option value="">Канал не выбран</option>
           {channels.map((c) => <option key={c.id} value={c.id}>{c.title}{c.kind === "test" ? " (тест)" : ""}{c.isPublishEnabled ? "" : " — выключен"}</option>)}
         </select>
         <button className="btn" disabled={!editable}>Сохранить</button>
+        <span className="meta">Формат: {FORMAT_LABEL[post.format as PostFormat] ?? post.format}</span>
       </form>
+      {available.length > 0 && (
+        <fieldset className="card" form="meta" style={{ marginTop: 8 }} disabled={!editable}>
+          <legend className="meta">Вложения из материалов (до 10, порядок как в списке). Сохраните, чтобы применить</legend>
+          <input type="hidden" name="attachmentsTouched" value="1" form="meta" />
+          <div className="row">
+            {available.map((a) => (
+              <label key={a.id} className="row" style={{ color: "var(--ink)", margin: 0 }}>
+                <input type="checkbox" name="attachmentIds" value={a.id} form="meta" defaultChecked={!!a.sha256 && selectedSha.has(a.sha256)} disabled={!a.storageKey} />
+                {a.kind === "image" && a.storageKey ? <img className="thumb" src={`/api/files/${a.storageKey}`} alt="" /> : <span>{a.kind}: {a.fileName ?? ""}</span>}
+                {!a.storageKey && <span className="meta">{a.downloadError ?? "скачивается"}</span>}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       <h2>Проверки</h2>
       {checks.length ? <ul className="checks">{checks.map((c, i) => <li key={i} className={c.level}>{c.message}</li>)}</ul> : <p className="meta">Замечаний нет.</p>}

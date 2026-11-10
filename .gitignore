@@ -13,3 +13,9 @@ node_modules
 next-env.d.ts
 *.tsbuildinfo
 coverage
+/.test-storage
+/.e2e-storage
+/.e2e-backups
+/playwright-report
+/test-results
+tests/e2e/telegram.log

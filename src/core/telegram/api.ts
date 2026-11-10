@@ -15,9 +15,15 @@ export class TelegramNetworkError extends Error {}
 
 export type SentMessage = { message_id: number; chat: { id: number; username?: string } };
 
+export type MediaFile = { data: Buffer; fileName: string };
+export type MediaKind = "photo" | "video" | "document";
+
 export interface TelegramPublisherApi {
   sendMessage(chatId: string, html: string): Promise<SentMessage>;
-  sendPhoto(chatId: string, photo: { data: Buffer; fileName: string }, captionHtml: string): Promise<SentMessage>;
+  sendPhoto(chatId: string, photo: MediaFile, captionHtml: string): Promise<SentMessage>;
+  sendMedia(chatId: string, kind: "video" | "document", file: MediaFile, captionHtml: string): Promise<SentMessage>;
+  /** Альбом из 2–10 файлов, подпись у первого. Telegram отправляет его одним запросом. */
+  sendMediaGroup(chatId: string, items: { kind: MediaKind; file: MediaFile }[], captionHtml: string): Promise<SentMessage[]>;
 }
 
 export interface TelegramFileApi {
@@ -62,6 +68,28 @@ export class BotApi implements TelegramPublisherApi, TelegramFileApi {
     fd.set("parse_mode", "HTML");
     fd.set("photo", new Blob([new Uint8Array(photo.data)]), photo.fileName);
     return this.call<SentMessage>("sendPhoto", fd);
+  }
+
+  sendMedia(chatId: string, kind: "video" | "document", file: MediaFile, captionHtml: string) {
+    const fd = new FormData();
+    fd.set("chat_id", chatId);
+    fd.set("caption", captionHtml);
+    fd.set("parse_mode", "HTML");
+    fd.set(kind, new Blob([new Uint8Array(file.data)]), file.fileName);
+    return this.call<SentMessage>(kind === "video" ? "sendVideo" : "sendDocument", fd);
+  }
+
+  sendMediaGroup(chatId: string, items: { kind: MediaKind; file: MediaFile }[], captionHtml: string) {
+    const fd = new FormData();
+    fd.set("chat_id", chatId);
+    const media = items.map((it, i) => ({
+      type: it.kind,
+      media: `attach://f${i}`,
+      ...(i === 0 && captionHtml ? { caption: captionHtml, parse_mode: "HTML" } : {}),
+    }));
+    fd.set("media", JSON.stringify(media));
+    items.forEach((it, i) => fd.set(`f${i}`, new Blob([new Uint8Array(it.file.data)]), it.file.fileName));
+    return this.call<SentMessage[]>("sendMediaGroup", fd);
   }
 
   getFile(fileId: string) {

@@ -128,6 +128,8 @@ model Material {
   topic              String?
   processingError    String?         @map("processing_error")
   duplicateCount     Int             @default(0) @map("duplicate_count")
+  /// Альбом Telegram: все сообщения с одним media_group_id собираются в один материал.
+  telegramMediaGroupId String?       @unique @map("telegram_media_group_id")
   deletedAt          DateTime?       @map("deleted_at")
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
@@ -189,7 +191,7 @@ model Post {
   status             String    @default("draft") // см. src/core/posts/states.ts
   channelId          String?   @map("channel_id")
   categoryId         String?   @map("category_id")
-  format             String    @default("text") // text | photo
+  format             String    @default("text") // text | photo | video | document | album (вычисляется из вложений)
   body               String    @default("") // Telegram HTML (белый список тегов)
   contentHash        String    @default("") @map("content_hash")
   scheduledAt        DateTime? @map("scheduled_at")

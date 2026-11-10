@@ -7,6 +7,7 @@ http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => (body += c));
   req.on("end", () => {
+    if (req.url === "/health") return res.end("ok");
     const method = req.url.split("/").pop();
     fs.appendFileSync(log, JSON.stringify({ method, body: body.slice(0, 2000) }) + "\n");
     const chatId = (() => { try { return JSON.parse(body).chat_id; } catch { return -1001; } })();

@@ -2,6 +2,7 @@ import { db, type Tx } from "@/lib/db";
 import { sha256 } from "@/lib/crypto";
 import { logActivity } from "@/core/activity/log";
 import { checkPost } from "@/core/publishing/telegram-html";
+import { deriveFormat } from "@/core/publishing/format";
 import { enqueueJob } from "@/core/jobs/queue";
 import { assertTransition, EDITABLE, type PostStatus } from "./states";
 
@@ -70,7 +71,7 @@ export async function createPost(input: { materialIds?: string[]; body?: string;
  * Сохраняет текст (автосохранение тоже идёт сюда). Если пост был подтверждён и содержимое
  * изменилось, подтверждение отзывается и пост возвращается на проверку.
  */
-export async function updatePostContent(postId: string, patch: { body?: string; format?: "text" | "photo"; categoryId?: string | null; channelId?: string | null }, actor: { userId: string | null; type?: "user" | "ai"; autosave?: boolean }) {
+export async function updatePostContent(postId: string, patch: { body?: string; categoryId?: string | null; channelId?: string | null; attachmentIds?: string[] }, actor: { userId: string | null; type?: "user" | "ai"; autosave?: boolean }) {
   return db.$transaction(async (tx) => {
     const post = await tx.post.findUniqueOrThrow({ where: { id: postId } });
     if (!EDITABLE.includes(post.status as PostStatus)) throw new PostError(`Публикацию в статусе «${post.status}» нельзя редактировать`);
@@ -78,11 +79,11 @@ export async function updatePostContent(postId: string, patch: { body?: string; 
       where: { id: postId },
       data: {
         ...(patch.body !== undefined ? { body: patch.body } : {}),
-        ...(patch.format ? { format: patch.format } : {}),
         ...(patch.categoryId !== undefined ? { categoryId: patch.categoryId } : {}),
         ...(patch.channelId !== undefined ? { channelId: patch.channelId } : {}),
       },
     });
+    if (patch.attachmentIds) await setPostAttachments(tx, postId, patch.attachmentIds);
     const newHash = computeContentHash(await contentOf(tx, postId));
     const changed = newHash !== post.contentHash;
     let status = post.status as PostStatus;
@@ -98,6 +99,25 @@ export async function updatePostContent(postId: string, patch: { body?: string; 
     }
     return { post: updated, approvalRevoked: status !== post.status };
   });
+}
+
+/**
+ * Заменяет вложения поста выбранными файлами из материалов (запись копируется, файл тот же)
+ * и пересчитывает формат. Нескачанные файлы выбрать нельзя.
+ */
+async function setPostAttachments(tx: Tx, postId: string, attachmentIds: string[]) {
+  const unique = [...new Set(attachmentIds)];
+  const src = await tx.attachment.findMany({ where: { id: { in: unique }, deletedAt: null } });
+  const ordered = unique.map((id) => src.find((a) => a.id === id)).filter((a): a is (typeof src)[number] => !!a);
+  if (ordered.length !== unique.length) throw new PostError("Часть вложений не найдена");
+  if (ordered.some((a) => !a.storageKey)) throw new PostError("Часть файлов ещё не скачана");
+  const fmt = deriveFormat(ordered.map((a) => a.kind));
+  if (!fmt.ok) throw new PostError(fmt.error);
+  await tx.attachment.updateMany({ where: { postId, deletedAt: null }, data: { deletedAt: new Date() } });
+  for (const [i, a] of ordered.entries()) {
+    await tx.attachment.create({ data: { postId, kind: a.kind, storageKey: a.storageKey, sha256: a.sha256, mime: a.mime, sizeBytes: a.sizeBytes, fileName: a.fileName, sortOrder: i } });
+  }
+  await tx.post.update({ where: { id: postId }, data: { format: fmt.format } });
 }
 
 async function systemUserId(tx: Tx) {
@@ -143,7 +163,7 @@ export async function approvePost(postId: string, input: { userId: string; via: 
     if (!post.channelId) throw new PostError("Не выбран канал для публикации");
     const channel = await tx.channel.findUniqueOrThrow({ where: { id: post.channelId } });
     if (!channel.isPublishEnabled) throw new PostError(`Публикация в канал «${channel.title}» выключена в настройках`);
-    const errors = checkPost(post.body, post.format as "text" | "photo").filter((c) => c.level === "error");
+    const errors = checkPost(post.body, post.format).filter((c) => c.level === "error");
     if (errors.length) throw new PostError(errors.map((e) => e.message).join("; "));
     const scheduled = input.scheduledFor && input.scheduledFor.getTime() > Date.now() ? input.scheduledFor : null;
     const to: PostStatus = scheduled ? "scheduled" : "approved";

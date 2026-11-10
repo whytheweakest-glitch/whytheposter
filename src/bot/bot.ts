@@ -111,6 +111,7 @@ export function buildBot(token: string) {
     if (!inputs.length) return ctx.reply("Этот тип сообщения пока не поддерживается.");
     for (const input of inputs) {
       const res = await intakeMaterial({ ...input, telegramUpdateId: ctx.updateRowId, actorUserId: ctx.appUser!.id });
+      if (res.status === "album_part") continue; // карточка альбома уже отправлена на первое фото
       if (res.status === "duplicate") {
         await ctx.reply("Уже есть в архиве, заметку добавил к существующему материалу.", { reply_parameters: { message_id: msg.message_id } });
       }
@@ -243,7 +244,7 @@ export function messageToIntake(msg: Message): Omit<IntakeInput, "telegramUpdate
     type = "voice";
   }
   if (att && type) {
-    return [{ ...base, type: forwardUrl ? "forward" : type, url: forwardUrl, text: caption, attachments: [att] }];
+    return [{ ...base, type: forwardUrl ? "forward" : type, url: forwardUrl, text: caption, attachments: [att], mediaGroupId: msg.media_group_id ?? null }];
   }
 
   const text = msg.text?.trim();
