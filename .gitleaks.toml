@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Поддельный токен бота для e2e-тестов против локального сервера"
+regexes = ['''123456:FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE12''']

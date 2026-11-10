@@ -57,15 +57,16 @@ export function escapeHtml(s: string) {
 export type PostCheck = { level: "error" | "warning"; message: string };
 
 /** Проверки перед подтверждением. Ошибки блокируют подтверждение, предупреждения нет. */
-export function checkPost(body: string, format: "text" | "photo", opts: { sourceUrls?: string[] } = {}): PostCheck[] {
+export function checkPost(body: string, format: string, opts: { sourceUrls?: string[] } = {}): PostCheck[] {
   const out: PostCheck[] = [];
   const trimmed = body.trim();
   if (!trimmed && format === "text") out.push({ level: "error", message: "Пустой текст" });
   const html = checkTelegramHtml(body);
   if (!html.ok) out.push({ level: "error", message: html.error });
   const len = visibleLength(body);
-  const limit = format === "photo" ? CAPTION_LIMIT : TEXT_LIMIT;
-  if (len > limit) out.push({ level: "error", message: `Длина ${len} из ${limit} символов${format === "photo" ? " (подпись к фото)" : ""}` });
+  const media = format !== "text";
+  const limit = media ? CAPTION_LIMIT : TEXT_LIMIT;
+  if (len > limit) out.push({ level: "error", message: `Длина ${len} из ${limit} символов${media ? " (подпись к медиа)" : ""}` });
   const emoji = body.match(/\p{Extended_Pictographic}/gu)?.length ?? 0;
   if (emoji > 5) out.push({ level: "warning", message: `Много эмодзи: ${emoji}` });
   const tags = body.match(/(^|\s)#[\p{L}\d_]+/gu)?.length ?? 0;

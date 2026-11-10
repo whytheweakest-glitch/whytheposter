@@ -4,7 +4,7 @@ import { errorMessage, logger } from "@/lib/logger";
 import { logActivity } from "@/core/activity/log";
 import { getValidApproval } from "@/core/posts/service";
 import { readStoredFile, stripJpegMetadata } from "@/core/storage/files";
-import { TelegramApiError, TelegramNetworkError, type TelegramPublisherApi, type SentMessage } from "@/core/telegram/api";
+import { TelegramApiError, TelegramNetworkError, type TelegramPublisherApi, type SentMessage, type MediaKind } from "@/core/telegram/api";
 
 export type PublishOutcome =
   | { result: "published"; messageIds: number[] }
@@ -69,16 +69,9 @@ export async function publishPost(postId: string, api: TelegramPublisherApi, now
 
   const chatId = post.channel.telegramChatId.toString();
   try {
-    let sent: SentMessage;
-    const photo = post.format === "photo" ? post.attachments.find((a) => a.kind === "image" && a.storageKey) : null;
-    if (post.format === "photo") {
-      if (!photo) throw new TelegramApiError(400, "У поста-фото нет скачанного изображения");
-      const raw = await readStoredFile(photo.storageKey!);
-      sent = await api.sendPhoto(chatId, { data: stripJpegMetadata(raw), fileName: photo.fileName ?? "image.jpg" }, post.body);
-    } else {
-      sent = await api.sendMessage(chatId, post.body);
-    }
-    const messageIds = [sent.message_id];
+    const sentList = await sendByFormat(api, chatId, post.format, post.body, post.attachments);
+    const sent = sentList[0];
+    const messageIds = sentList.map((m) => m.message_id);
     await db.$transaction(async (tx) => {
       await tx.post.update({
         where: { id: postId },
@@ -118,6 +111,35 @@ export async function publishPost(postId: string, api: TelegramPublisherApi, now
     logger.error({ postId }, "publish_unknown");
     return { result: "unknown", error: msg };
   }
+}
+
+type StoredAttachment = { kind: string; storageKey: string | null; fileName: string | null; mime: string | null };
+
+async function loadFile(a: StoredAttachment) {
+  // Ошибка до отправки: в Telegram ничего не ушло, поэтому это однозначный отказ, а не «неизвестно».
+  if (!a.storageKey) throw new TelegramApiError(400, "Вложение не скачано");
+  const raw = await readStoredFile(a.storageKey);
+  const data = a.kind === "image" ? stripJpegMetadata(raw) : raw;
+  return { data, fileName: a.fileName ?? (a.kind === "image" ? "image.jpg" : a.kind === "video" ? "video.mp4" : "file") };
+}
+
+const KIND: Record<string, MediaKind> = { image: "photo", video: "video", document: "document" };
+
+/** Отправка по формату. Все файлы читаются до первого запроса к Telegram. */
+async function sendByFormat(api: TelegramPublisherApi, chatId: string, format: string, body: string, attachments: StoredAttachment[]): Promise<SentMessage[]> {
+  if (format === "text") return [await api.sendMessage(chatId, body)];
+  if (!attachments.length) throw new TelegramApiError(400, "У поста нет вложений для формата " + format);
+  let files: Awaited<ReturnType<typeof loadFile>>[];
+  try {
+    files = await Promise.all(attachments.map(loadFile));
+  } catch (e) {
+    if (e instanceof TelegramApiError) throw e;
+    throw new TelegramApiError(400, `Не удалось прочитать файл: ${errorMessage(e)}`);
+  }
+  if (format === "photo") return [await api.sendPhoto(chatId, files[0], body)];
+  if (format === "video" || format === "document") return [await api.sendMedia(chatId, format, files[0], body)];
+  if (format === "album") return api.sendMediaGroup(chatId, attachments.map((a, i) => ({ kind: KIND[a.kind] ?? "document", file: files[i] })), body);
+  throw new TelegramApiError(400, `Неизвестный формат ${format}`);
 }
 
 /** Посты, зависшие в publishing (процесс упал во время отправки), уходят в publish_unknown, а не в повтор. */

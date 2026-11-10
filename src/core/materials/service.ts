@@ -26,11 +26,14 @@ export type IntakeInput = {
   attachments?: IncomingAttachment[];
   telegramUpdateId?: string | null;
   actorUserId?: string | null;
+  /** media_group_id альбома Telegram: части альбома добавляются в один материал. */
+  mediaGroupId?: string | null;
 };
 
 export type IntakeResult =
   | { status: "created"; materialId: string }
-  | { status: "duplicate"; materialId: string };
+  | { status: "duplicate"; materialId: string }
+  | { status: "album_part"; materialId: string };
 
 async function sourceId(tx: Tx, kind: IntakeInput["sourceKind"]) {
   const names = { telegram_bot: "Telegram-бот", manual: "Вручную", upload: "Загрузка файла" } as const;
@@ -67,6 +70,20 @@ export async function intakeMaterial(input: IntakeInput): Promise<IntakeResult> 
 
   try {
     return await db.$transaction(async (tx) => {
+      if (input.mediaGroupId) {
+        const album = await tx.material.findUnique({ where: { telegramMediaGroupId: input.mediaGroupId }, include: { attachments: true } });
+        if (album) {
+          const start = album.attachments.length;
+          for (const [i, a] of (input.attachments ?? []).entries()) {
+            const created = await tx.attachment.create({
+              data: { materialId: album.id, kind: a.kind, telegramFileId: a.telegramFileId, telegramFileUniqueId: a.telegramFileUniqueId, mime: a.mime ?? null, sizeBytes: a.sizeBytes ?? null, fileName: a.fileName ?? null, sortOrder: start + i },
+            });
+            await enqueueJob({ kind: "download_attachment", payload: { attachmentId: created.id }, dedupKey: `download:${created.id}` }, tx);
+          }
+          if (text && !album.text?.includes(text)) await tx.material.update({ where: { id: album.id }, data: { text: [album.text, text].filter(Boolean).join("\n\n") } });
+          return { status: "album_part" as const, materialId: album.id };
+        }
+      }
       const dup = await findDuplicate(tx);
       if (dup) {
         await markDuplicate(tx, dup.id, input.ownerNote ?? null);
@@ -80,6 +97,7 @@ export async function intakeMaterial(input: IntakeInput): Promise<IntakeResult> 
           status: "inbox",
           originalUrl: input.url ?? null,
           normalizedUrlHash: hash,
+          telegramMediaGroupId: input.mediaGroupId ?? null,
           contentHash: text ? sha256(text) : null,
           title: input.title ?? null,
           sourceName: input.sourceName ?? null,

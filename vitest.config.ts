@@ -11,6 +11,7 @@ export default defineConfig({
       SESSION_SECRET: "test-secret-test-secret-test-secret-123",
       OWNER_TELEGRAM_IDS: "111",
       LOG_LEVEL: "silent",
+      STORAGE_DIR: "./.test-storage",
     },
     fileParallelism: false,
     testTimeout: 15000,

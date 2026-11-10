@@ -8,13 +8,13 @@ type Props = {
   postId: string;
   initialBody: string;
   editable: boolean;
-  format: "text" | "photo";
+  format: string;
   channelTitle: string;
-  imageUrl: string | null;
+  media: { kind: string; url: string; name: string }[];
 };
 
 /** Редактор с автосохранением (через 1,5 с после паузы) и живым предпросмотром Telegram. */
-export function Editor({ postId, initialBody, editable, format, channelTitle, imageUrl }: Props) {
+export function Editor({ postId, initialBody, editable, format, channelTitle, media }: Props) {
   const [body, setBody] = useState(initialBody);
   const [state, setState] = useState<{ text: string; tone: "ok" | "warn" | "danger" }>({ text: "Сохранено", tone: "ok" });
   const [, start] = useTransition();
@@ -50,7 +50,7 @@ export function Editor({ postId, initialBody, editable, format, channelTitle, im
     return () => window.removeEventListener("beforeunload", warn);
   }, [body]);
 
-  const limit = format === "photo" ? CAPTION_LIMIT : TEXT_LIMIT;
+  const limit = format !== "text" ? CAPTION_LIMIT : TEXT_LIMIT;
   const len = visibleLength(body);
   const html = checkTelegramHtml(body);
 
@@ -69,7 +69,13 @@ export function Editor({ postId, initialBody, editable, format, channelTitle, im
         <label>Предпросмотр: {channelTitle}</label>
         <div className="tg">
           <div className="tg-bubble">
-            {format === "photo" && imageUrl && <img src={imageUrl} alt="" />}
+            {media.length > 0 && (
+              <div className={media.length > 1 ? "tg-album" : ""}>
+                {media.map((m, i) =>
+                  m.kind === "image" ? <img key={i} src={m.url} alt="" /> : m.kind === "video" ? <video key={i} src={m.url} muted playsInline /> : <div key={i} className="tg-file">📄 {m.name}</div>,
+                )}
+              </div>
+            )}
             <div className="tg-channel">{channelTitle}</div>
             <div dangerouslySetInnerHTML={{ __html: previewHtml(body) || "<i style='color:#999'>пусто</i>" }} />
             <div className="tg-meta">👁 — · 12:00</div>

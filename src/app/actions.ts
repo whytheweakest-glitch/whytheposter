@@ -103,29 +103,18 @@ export async function savePostMeta(f: FormData) {
       id,
       {
         body: f.has("body") ? str(f, "body") : undefined,
-        format: str(f, "format") === "photo" ? "photo" : "text",
         categoryId: str(f, "categoryId") || null,
         channelId: str(f, "channelId") || null,
+        // порядок отметок = порядок в альбоме
+        attachmentIds: f.has("attachmentsTouched") ? f.getAll("attachmentIds").filter((x): x is string => typeof x === "string") : undefined,
       },
       { userId: user.id },
     );
-    const photoId = str(f, "photoAttachmentId");
-    if (photoId) await attachPhoto(id, photoId);
   } catch (e) {
     fail(path, e);
   }
   revalidatePath(path);
   redirect(path);
-}
-
-/** Привязывает к посту изображение из материала (копия записи о вложении, файл тот же). */
-async function attachPhoto(postId: string, attachmentId: string) {
-  const src = await db.attachment.findUniqueOrThrow({ where: { id: attachmentId } });
-  if (!src.storageKey) throw new PostError("Изображение ещё не скачано");
-  await db.attachment.updateMany({ where: { postId, deletedAt: null }, data: { deletedAt: new Date() } });
-  await db.attachment.create({ data: { postId, kind: "image", storageKey: src.storageKey, sha256: src.sha256, mime: src.mime, sizeBytes: src.sizeBytes, fileName: src.fileName } });
-  // хеш содержимого учитывает вложения: пересчитываем через обычное обновление
-  await updatePostContent(postId, {}, { userId: null });
 }
 
 export async function useVariant(f: FormData) {

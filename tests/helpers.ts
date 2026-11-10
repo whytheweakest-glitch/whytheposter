@@ -25,9 +25,23 @@ export class FakeTelegram implements TelegramPublisherApi {
     if (this.next) return this.next();
     return { message_id: ++this.id, chat: { id: Number(chatId), username: "wtw_test" } };
   }
-  async sendPhoto(chatId: string, _p: { data: Buffer; fileName: string }, caption: string) {
+  files: { method: string; fileName: string; size: number; head: Buffer }[] = [];
+  async sendPhoto(chatId: string, p: { data: Buffer; fileName: string }, caption: string) {
     this.calls.push({ method: "sendPhoto", chatId, text: caption });
+    this.files.push({ method: "sendPhoto", fileName: p.fileName, size: p.data.length, head: p.data });
     if (this.next) return this.next();
     return { message_id: ++this.id, chat: { id: Number(chatId) } };
+  }
+  async sendMedia(chatId: string, kind: "video" | "document", f: { data: Buffer; fileName: string }, caption: string) {
+    this.calls.push({ method: kind === "video" ? "sendVideo" : "sendDocument", chatId, text: caption });
+    this.files.push({ method: kind, fileName: f.fileName, size: f.data.length, head: f.data });
+    if (this.next) return this.next();
+    return { message_id: ++this.id, chat: { id: Number(chatId) } };
+  }
+  async sendMediaGroup(chatId: string, items: { kind: string; file: { data: Buffer; fileName: string } }[], caption: string) {
+    this.calls.push({ method: "sendMediaGroup", chatId, text: caption });
+    for (const it of items) this.files.push({ method: it.kind, fileName: it.file.fileName, size: it.file.data.length, head: it.file.data });
+    if (this.next) return [await this.next()];
+    return items.map(() => ({ message_id: ++this.id, chat: { id: Number(chatId) } }));
   }
 }
