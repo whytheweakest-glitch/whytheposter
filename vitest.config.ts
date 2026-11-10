@@ -13,6 +13,7 @@ export default defineConfig({
       LOG_LEVEL: "silent",
       STORAGE_DIR: "./.test-storage",
     },
+    include: ["tests/unit/**/*.test.ts", "tests/integration/**/*.test.ts"],
     fileParallelism: false,
     testTimeout: 15000,
   },
