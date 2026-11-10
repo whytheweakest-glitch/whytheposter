@@ -21,7 +21,8 @@
     "import:reference": "tsx --env-file-if-exists=.env scripts/import-reference.ts",
     "os": "tsx --env-file-if-exists=.env scripts/start-all.ts",
     "lint": "eslint . --max-warnings 0",
-    "test:e2e": "tsx tests/e2e/prepare.ts && playwright test"
+    "test:e2e": "tsx tests/e2e/prepare.ts && playwright test",
+    "setup:check": "tsx --env-file-if-exists=.env scripts/setup-check.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
