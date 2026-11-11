@@ -15,7 +15,7 @@ export function Shell({ active, title, children, error, info }: { active: string
   return (
     <div className="shell">
       <header className="topbar">
-        <Link href="/" className="wordmark">WHYTHEWEAKEST<span>/OS</span></Link>
+        <Link href="/" className="wordmark" aria-label="WHYTHEWEAKEST OS"><b>whytheweakest . . .</b><span>[ editorial os ]</span></Link>
         <nav className="nav">
           {NAV.map(([href, label]) => (
             <Link key={href} href={href} className={active === href ? "active" : ""}>{label}</Link>
